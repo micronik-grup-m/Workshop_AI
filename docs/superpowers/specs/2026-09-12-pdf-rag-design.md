@@ -1,0 +1,247 @@
+# RAG peste PDF-uri — Extensie backend (sub-proiectul 1)
+
+> Extinde backend-ul demo-ului CRUD + MCP (spec:
+> `2026-09-10-employee-crud-mcp-demo-design.md`, extins deja cu Flyway +
+> Envers + Docker: `2026-09-12-flyway-envers-docker-design.md`) cu un
+> subsistem RAG (Retrieval-Augmented Generation): încarci un PDF, iar
+> modelul AI din LM Studio poate căuta și cita informații din el prin
+> tool-uri MCP, la fel cum operează deja pe angajați.
+
+## Scop
+
+Proiectul demonstrează azi tool-calling MCP pe date structurate
+(Employee). Această extensie adaugă un al doilea canal de date,
+nestructurat: PDF-uri încărcate de un admin, indexate semantic, și
+interogabile de modelul AI prin MCP. Nu modifică nimic din fluxul
+Employee existent.
+
+## Arhitectură
+
+```
+Admin (JWT)          LM Studio (Qwen)
+   │ upload PDF            │ prompt în limbaj natural
+   ▼                       ▼
+DocumentController    DocumentMcpTools (MCP, neautentificat)
+   │                       │
+   ▼                       ▼
+DocumentIngestionService   DocumentQueryService
+   │                       │
+   ├─ PagePdfDocumentReader (extrage text per pagină)
+   ├─ TokenTextSplitter (împarte în fragmente)
+   ├─ EmbeddingModel (OpenAI-compatible → LM Studio, model embedding)
+   └─ PgVectorStore (Postgres + extensia pgvector)
+```
+
+Fragmentele întoarse de căutare sunt text simplu (sursă + pagină +
+conținut) — la fel ca `EmployeeMcpTools`, backend-ul NU sintetizează
+singur răspunsul final; modelul din LM Studio face asta, pe baza
+fragmentelor primite ca rezultat al tool-ului. Nu există un al doilea
+apel LLM în backend (decizie: Abordarea A, aleasă explicit în locul
+unui RAG complet server-side).
+
+## Constrângere majoră: doar profilul `docker` (Postgres)
+
+`pgvector` nu are echivalent pe H2. Featurea RAG e disponibilă **doar**
+când aplicația rulează sub profilul `docker` (Postgres real, în
+container). Sub profilul implicit (H2 local, `mvn spring-boot:run`),
+endpoint-urile `/api/documents/**` și tool-urile MCP de documente rămân
+înregistrate, dar orice apel eșuează cu o eroare clară (vector store
+indisponibil) — nu există fallback in-memory pentru H2. Restul
+aplicației (Employee CRUD) nu e afectat, funcționează neschimbat pe H2.
+
+## Dependințe noi (`pom.xml`)
+
+Toate verificate pe Maven Central ca existând exact la
+`${spring-ai.version}` (2.0.1, deja definit în BOM) — fără versiune
+explicită necesară:
+
+- `org.springframework.ai:spring-ai-pdf-document-reader` — citește PDF
+  (Apache PDFBox intern), produce un `Document` Spring AI per pagină.
+- `org.springframework.ai:spring-ai-starter-model-openai` — client
+  compatibil OpenAI pentru embeddings, îndreptat spre LM Studio local
+  (nu OpenAI real). Auto-configurează și un `OpenAiChatModel`, pe care
+  nu-l folosim — dezactivat explicit via `spring.ai.model.chat=none`
+  în `application.yml`, ca să nu rămână un bean neutilizat înregistrat
+  degeaba.
+- `org.springframework.ai:spring-ai-starter-vector-store-pgvector` —
+  `VectorStore` peste Postgres.
+
+## Docker
+
+- Imaginea serviciului `db` trece din `postgres:16-alpine` în
+  **`pgvector/pgvector:pg16`** — drop-in replacement (aceleași
+  variabile de mediu, același volum `workshopai-db-data`), singura
+  diferență fiind extensia `vector` inclusă din fabrică.
+- `application-docker.yml` capătă configurația clientului de embeddings
+  către LM Studio, rulat pe mașina gazdă (nu într-un container):
+  `base-url: http://host.docker.internal:1234` (Docker Desktop pe
+  macOS/Windows rezolvă automat acest hostname către gazdă).
+- Profilul implicit (local, non-Docker) folosește
+  `base-url: http://localhost:1234` pentru consistență de configurare,
+  chiar dacă — vezi constrângerea de mai sus — apelurile efective spre
+  vector store vor eșua oricum pe H2 înainte să ajungă la embeddings.
+
+## Model de embeddings — prerequisit nou de workshop
+
+Modelul de embeddings trebuie descărcat explicit în LM Studio, separat
+de Qwen (chat): **`nomic-embed-text-v1.5`** (GGUF), încărcat în **modul
+embedding**, nu chat completion. Motiv: dimensiunea vectorului trebuie
+fixată în schema Postgres (`vector(768)`) — `nomic-embed-text-v1.5`
+produce embeddings de 768 dimensiuni. Documentat ca pas nou în ghidul
+de setup (secțiunea următoare).
+
+```yaml
+spring:
+  ai:
+    model:
+      chat: none
+    openai:
+      embedding:
+        base-url: http://localhost:1234   # sau host.docker.internal în docker
+        api-key: not-needed                 # LM Studio nu validează, dar Spring AI cere o valoare nevidă
+        options:
+          model: text-embedding-nomic-embed-text-v1.5
+    vectorstore:
+      pgvector:
+        initialize-schema: false   # schema vine din Flyway, nu din auto-init Spring AI
+        dimensions: 768
+        index-type: HNSW
+        distance-type: COSINE_DISTANCE
+```
+
+## Schema DB — Flyway
+
+Consistent cu restul proiectului (`ddl-auto: validate`, Flyway ca unică
+sursă de adevăr pentru schemă):
+
+- `V4__create_rag_document_table.sql` — tabelul `rag_document`
+  (`id BIGINT GENERATED BY DEFAULT AS IDENTITY`, `filename VARCHAR(255)
+  NOT NULL`, `uploaded_at TIMESTAMP NOT NULL`, `page_count INT NOT
+  NULL`, `chunk_count INT NOT NULL`).
+- `V5__create_vector_store_table.sql` — schema exactă cerută de
+  `PgVectorStore` (verificată în documentația oficială Spring AI),
+  adaptată cu dimensiunea fixată la 768:
+
+```sql
+CREATE EXTENSION IF NOT EXISTS vector;
+CREATE EXTENSION IF NOT EXISTS hstore;
+CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+
+CREATE TABLE IF NOT EXISTS vector_store (
+    id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
+    content text,
+    metadata json,
+    embedding vector(768)
+);
+
+CREATE INDEX ON vector_store USING HNSW (embedding vector_cosine_ops);
+```
+
+Aceste migrații rulează doar pe Postgres (profilul `docker`) — nu pot
+rula pe H2 (extensiile `vector`/`hstore`/`uuid-ossp` nu există acolo).
+Ca migrațiile Flyway existente (V1-V3) să rămână portabile pe H2 pentru
+testele curente, V4/V5 se marchează cu un tag de mediu (detaliu de
+implementare: fie migrații condiționate prin `Flyway
+locations`/callback specific profilului `docker`, fie un al doilea
+`flyway.locations` activ doar sub profilul `docker`) — planul de
+implementare decide mecanismul exact, cu un test care confirmă că
+suita existentă tot rulează neschimbată pe H2.
+
+## Componente noi (pachet `ro.micronikgrupm.mcp.client.rag`)
+
+- **`RagDocument`** — entitate JPA (`id`, `filename`, `uploadedAt`,
+  `pageCount`, `chunkCount`). Nu e `@Audited` (Envers rămâne scopat la
+  Employee/AppUser, fără cerință de audit pentru documente).
+- **`RagDocumentRepository`** — Spring Data JPA, `findAll()`,
+  `findById(Long)`.
+- **`DocumentNotFoundException`** — analog `EmployeeNotFoundException`.
+- **`DocumentIngestionService`**
+  - `RagDocument ingest(MultipartFile file)`: validează extensia
+    `.pdf`, citește cu `PagePdfDocumentReader`, împarte cu
+    `TokenTextSplitter` (setări implicite), atașează metadate
+    (`documentId`, `filename`, `page`) fiecărui fragment rezultat,
+    salvează `RagDocument` (obține `id`), apoi apelează
+    `vectorStore.add(...)` cu fragmentele (metadatele includ acum
+    `documentId`-ul real).
+  - `void delete(Long documentId)`: `vectorStore.delete("documentId ==
+    '" + documentId + "'")` (filtru pe metadată, id intern numeric —
+    fără risc de injecție, nu vine din input liber), apoi șterge
+    rândul `RagDocument`; aruncă `DocumentNotFoundException` dacă
+    `id`-ul nu există.
+- **`DocumentQueryService`**
+  - `String search(String query, int topK)`: `vectorStore
+    .similaritySearch(SearchRequest.builder().query(query)
+    .topK(topK).build())`, formatează fiecare rezultat ca
+    `"[<filename>, pagina <page>] <conținut fragment>"`, concatenate
+    cu newline; `"Niciun document găsit."` dacă lista e goală.
+  - `String listAll()`: listează `RagDocument` (`id`, `filename`,
+    `pageCount`, `chunkCount`), format text similar cu `listEmployees`.
+- **`DocumentController`** (`/api/documents`, doar `ROLE_ADMIN`, ca în
+  `SecurityConfig`):
+  - `POST /api/documents` (multipart, câmp `file`) → 201, `RagDocument`
+    serializat ca JSON (record `DocumentResponse`).
+  - `GET /api/documents` → 200, listă `DocumentResponse`.
+  - `DELETE /api/documents/{id}` → 204; 404 dacă nu există.
+- **`DocumentMcpTools`** (neautentificat, ca `EmployeeMcpTools`):
+  - `@McpTool searchDocuments(query, topK opțional, implicit 5)` →
+    text.
+  - `@McpTool listDocuments()` → text.
+
+## `SecurityConfig` — regulă nouă
+
+```java
+.requestMatchers("/api/documents/**").hasRole("ADMIN")
+```
+
+(`/mcp/**` rămâne `permitAll()`, neschimbat — noile tool-uri MCP intră
+automat sub aceeași regulă existentă.)
+
+## Gestionare erori (`GlobalExceptionHandler`)
+
+- `DocumentNotFoundException` → 404, `ApiError("NOT_FOUND", ...)`.
+- Fișier non-PDF sau lipsă la upload → `IllegalArgumentException` din
+  `DocumentIngestionService`, deja mapată la 400 de handler-ul existent
+  — fără cod nou de gestionare.
+- Eroare de la vector store (ex. rulare pe H2, tabel/extensie
+  inexistentă) → propagă ca 500 cu mesaj generic; documentat explicit
+  în ghidul de setup ca semn că nu rulezi sub profilul `docker`.
+
+## Testare
+
+- Teste `DocumentIngestionService`/`DocumentQueryService`/
+  `DocumentController` rulează **doar** împotriva Postgres real (nu H2)
+  — planul de implementare decide mecanismul (Testcontainers cu imaginea
+  `pgvector/pgvector:pg16`, verificat că există pe Docker Hub ca tag
+  valid înainte de a fi scris în plan).
+- Suita existentă (Employee, Envers, Flyway V1-V3) rămâne neschimbată,
+  rulează în continuare pe H2, fără dependență de Postgres.
+- Test manual de verificare end-to-end (ca la Flyway+Envers+Docker):
+  `docker compose up --build`, upload PDF prin `curl`/UI, prompt în
+  LM Studio care declanșează `searchDocuments`, confirmare vizuală a
+  răspunsului.
+
+## Documentație de workshop
+
+Actualizate ca parte a acestui plan (nu opțional):
+- `docs/workshop-setup-guide-en.md` / `-fr.md`: pas nou de download
+  pentru `nomic-embed-text-v1.5` (mod embedding) în LM Studio, secțiune
+  nouă „Upload a PDF and query it”/„Charger un PDF et l'interroger” cu
+  exemplu `curl` de upload și prompturi de test pentru
+  `searchDocuments`/`listDocuments`, mențiune explicită că featurea
+  necesită `docker compose up`, nu `mvn spring-boot:run`.
+
+## În afara scopului
+
+- Suport H2 pentru RAG (SimpleVectorStore in-memory sau echivalent) —
+  respins explicit, complexitate nejustificată pentru un demo.
+- RAG complet server-side cu sinteză de răspuns în backend (Abordarea
+  B) — respins, păstrăm simetria cu `EmployeeMcpTools`.
+- Alte formate de fișier în afară de PDF (Word, text simplu, imagini
+  OCR).
+- Ștergerea/actualizarea unui fragment individual — doar document
+  întreg (upload / delete).
+- Autentificare pe tool-urile MCP de documente — rămân neautentificate,
+  ca toate tool-urile MCP existente (decizie originală a proiectului,
+  nu redeschisă aici).
+- Chunking configurabil (dimensiune fragment, overlap) — folosim
+  setările implicite `TokenTextSplitter`, fără parametri expuși.

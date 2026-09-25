@@ -1,0 +1,36 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: workshopai
+      POSTGRES_USER: workshopai
+      POSTGRES_PASSWORD: workshopai
+    ports:
+      - "55432:5432"
+    volumes:
+      - workshopai-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U workshopai"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+    ports:
+      - "8080:8080"
+
+  frontend:
+    build: ./frontend
+    depends_on:
+      - app
+    ports:
+      - "4200:80"
+
+volumes:
+  workshopai-db-data:

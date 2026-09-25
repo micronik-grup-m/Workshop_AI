@@ -1,0 +1,15 @@
+<form (ngSubmit)="submit()">
+    <h1>Autentificare</h1>
+    <label>
+        Utilizator
+        <input name="username" [ngModel]="username()" (ngModelChange)="username.set($event)" />
+    </label>
+    <label>
+        Parolă
+        <input name="password" type="password" [ngModel]="password()" (ngModelChange)="password.set($event)" />
+    </label>
+    <button type="submit">Intră în cont</button>
+    @if (errorMessage()) {
+        <p class="error">{{ errorMessage() }}</p>
+    }
+</form>

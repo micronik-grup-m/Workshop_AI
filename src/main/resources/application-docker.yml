@@ -1,0 +1,22 @@
+spring:
+  datasource:
+    url: jdbc:postgresql://db:5432/workshopai
+    driver-class-name: org.postgresql.Driver
+    username: workshopai
+    password: workshopai
+  jpa:
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    locations: classpath:db/migration,classpath:db/migration-postgres
+  ai:
+    openai:
+      embedding:
+        base-url: http://host.docker.internal:1234
+
+server:
+  address: 0.0.0.0
+
+security:
+  api:
+    path-prefix: /api/

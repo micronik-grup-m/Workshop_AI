@@ -1,0 +1,7 @@
+@if (loggedIn) {
+    <nav>
+        <a routerLink="/employees">Angajați</a>
+        <button (click)="logout()">Ieși din cont</button>
+    </nav>
+}
+<router-outlet />

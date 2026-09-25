@@ -1,0 +1,52 @@
+spring:
+  application:
+    name: workshop-ai
+  datasource:
+    url: jdbc:h2:mem:testdb;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password: ""
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: false
+  ai:
+    model:
+      chat: none
+      audio:
+        speech: none
+        transcription: none
+      image: none
+      moderation: none
+    mcp:
+      server:
+        name: workshop-ai-mcp-server
+        version: 1.0.0
+        protocol: STREAMABLE
+        type: SYNC
+    openai:
+      embedding:
+        base-url: http://localhost:1234
+        api-key: not-needed
+        model: text-embedding-nomic-embed-text-v1.5
+    vectorstore:
+      pgvector:
+        initialize-schema: false
+        dimensions: 768
+        index-type: HNSW
+        distance-type: COSINE_DISTANCE
+
+server:
+  address: 127.0.0.1
+  port: 8080
+
+jwt:
+  secret: "d0a3f2b6c9e1487fa4c3e9b1728d4f6a0c5e8b3d7f2a9c4e6b1d8f3a5c7e9b2d"
+  expiration-minutes: 60
+
+app:
+  seed:
+    admin-username: admin
+    admin-password: admin123
+    user-username: user
+    user-password: user123

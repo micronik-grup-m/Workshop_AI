@@ -1,0 +1,14 @@
+<!-- frontend/src/app/employees/employee-form/employee-form.html -->
+<form (ngSubmit)="submit()">
+    <h1>{{ employeeId ? 'Editează angajat' : 'Angajat nou' }}</h1>
+    <label>Prenume <input name="firstName" [ngModel]="firstName()" (ngModelChange)="firstName.set($event)" /></label>
+    <label>Nume <input name="lastName" [ngModel]="lastName()" (ngModelChange)="lastName.set($event)" /></label>
+    <label>Email <input name="email" [ngModel]="email()" (ngModelChange)="email.set($event)" /></label>
+    <label>Departament <input name="department" [ngModel]="department()" (ngModelChange)="department.set($event)" /></label>
+    <label>Salariu <input name="salary" type="number" [ngModel]="salary()" (ngModelChange)="salary.set($event)" /></label>
+    <label>Data angajării <input name="hireDate" type="date" [ngModel]="hireDate()" (ngModelChange)="hireDate.set($event)" /></label>
+    <button type="submit">Salvează</button>
+    @if (errorMessage()) {
+        <p class="error">{{ errorMessage() }}</p>
+    }
+</form>

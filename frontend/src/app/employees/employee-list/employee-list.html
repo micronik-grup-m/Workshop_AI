@@ -1,0 +1,34 @@
+<!-- frontend/src/app/employees/employee-list/employee-list.html -->
+<h1>Angajați</h1>
+@if (canWrite) {
+    <a routerLink="/employees/new">Adaugă angajat</a>
+}
+<table>
+    <thead>
+        <tr>
+            <th>Nume</th>
+            <th>Email</th>
+            <th>Departament</th>
+            <th>Salariu</th>
+            @if (canWrite) {
+                <th>Acțiuni</th>
+            }
+        </tr>
+    </thead>
+    <tbody>
+        @for (employee of employees(); track employee.id) {
+            <tr>
+                <td>{{ employee.firstName }} {{ employee.lastName }}</td>
+                <td>{{ employee.email }}</td>
+                <td>{{ employee.department }}</td>
+                <td>{{ employee.salary }}</td>
+                @if (canWrite) {
+                    <td>
+                        <a [routerLink]="['/employees', employee.id, 'edit']">Editează</a>
+                        <button (click)="deleteEmployee(employee.id)">Șterge</button>
+                    </td>
+                }
+            </tr>
+        }
+    </tbody>
+</table>
