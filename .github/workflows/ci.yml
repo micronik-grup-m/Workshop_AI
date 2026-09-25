@@ -1,0 +1,14 @@
+name: CI
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  ci:
+    uses: georgesand/ci-workflows/.github/workflows/java-ci.yml@main
+    with:
+      deploy-maven: true
+      push-image:   true
+      image-name:   numeaplicatie
+    secrets: inherit        # trimite automat toate secretele, nu le enumeri
