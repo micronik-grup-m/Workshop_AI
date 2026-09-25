@@ -17,6 +17,11 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    env:
+      # trebuie disponibile la orice pas care ruleaza mvn, fiindca settings.xml
+      # (server-ul "nexus", folosit si de mirror) le citeste din environment: ${env.NEXUS_USER}
+      NEXUS_USER:     ${{ secrets.NEXUS_USER }}
+      NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -93,9 +98,6 @@ jobs:
 
       - name: Publicare artefact in Nexus
         if: ${{ inputs.deploy-maven }}
-        env:
-          NEXUS_USER:     ${{ secrets.NEXUS_USER }}
-          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
         run: mvn -B deploy -DskipTests
 
       - name: Login la registry-ul tau
