@@ -19,9 +19,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       # trebuie disponibile la orice pas care ruleaza mvn, fiindca settings.xml
-      # (server-ul "nexus", folosit si de mirror) le citeste din environment: ${env.NEXUS_USER}
+      # (serverele "nexus" si "nvd") le citeste din environment: ${env.NEXUS_USER} / ${env.NVD_API_KEY}
       NEXUS_USER:     ${{ secrets.NEXUS_USER }}
       NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+      NVD_API_KEY:    ${{ secrets.NVD_API_KEY }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,7 +37,7 @@ jobs:
           server-username: NEXUS_USER
           server-password: NEXUS_PASSWORD
 
-      - name: Mirror Nexus pentru dependinte (in loc de Maven Central direct)
+      - name: Mirror Nexus + server NVD in settings.xml
         run: |
           python3 - <<'PY'
           import os
@@ -44,6 +45,15 @@ jobs:
           path = os.path.expanduser("~/.m2/settings.xml")
           with open(path) as f:
               content = f.read()
+
+          # server "nvd" langa cel "nexus" generat deja de actions/setup-java
+          # (acelasi tipar ca in ~/.m2/settings.xml local: doar password, fara username)
+          nvd_server = """    <server>
+              <id>nvd</id>
+              <password>${env.NVD_API_KEY}</password>
+            </server>
+          """
+          content = content.replace("</servers>", nvd_server + "</servers>")
 
           mirror = """  <mirrors>
               <mirror>
@@ -53,8 +63,8 @@ jobs:
               </mirror>
             </mirrors>
           """
-
           content = content.replace("</settings>", mirror + "</settings>")
+
           with open(path, "w") as f:
               f.write(content)
           PY
@@ -72,9 +82,7 @@ jobs:
             dependency-check-data-${{ runner.os }}-
 
       - name: Build si teste
-        env:
-          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
-        run: mvn -B clean verify -DnvdApiKey="$NVD_API_KEY"
+        run: mvn -B clean verify
 
       - name: Analiza SonarQube
         env:
