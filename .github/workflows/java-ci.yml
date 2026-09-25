@@ -1,0 +1,79 @@
+name: Java CI (Nexus + Sonar + Dependency-Track + Docker)
+
+on:
+  workflow_call:
+    inputs:
+      java-version: { type: string,  default: '21' }
+      deploy-maven: { type: boolean, default: false }
+      push-image:   { type: boolean, default: false }
+      image-name:   { type: string,  default: '' }
+    secrets:
+      NEXUS_USER:     { required: true }
+      NEXUS_PASSWORD: { required: true }
+      SONAR_TOKEN:    { required: true }
+      DTRACK_APIKEY:  { required: true }
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # Sonar are nevoie de istoric, altfel pierde "blame"
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ inputs.java-version }}
+          cache: maven            # cache-ul Maven al GitHub-ului, nu al tau
+          server-id: nexus        # genereaza ~/.m2/settings.xml cu credentialele de mai jos
+          server-username: NEXUS_USER
+          server-password: NEXUS_PASSWORD
+
+      - name: Build si teste
+        run: mvn -B clean verify
+
+      - name: Analiza SonarQube
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: >
+          mvn -B sonar:sonar
+          -Dsonar.host.url=https://sonar.georgesand.ro
+          -Dsonar.projectKey=${{ github.event.repository.name }}
+          -Dsonar.projectName=${{ github.event.repository.name }}
+
+      - name: SBOM si trimitere in Dependency-Track
+        env:
+          DTRACK_APIKEY: ${{ secrets.DTRACK_APIKEY }}
+        run: |
+          mvn -B cyclonedx:makeAggregateBom
+          mvn -B io.github.pmckeown:dependency-track-maven-plugin:upload-bom \
+            -Ddependency-track.serverUrl=https://dtrack.georgesand.ro \
+            -Ddependency-track.apiKey="$DTRACK_APIKEY" \
+            -Ddependency-track.projectName=${{ github.event.repository.name }} \
+            -Ddependency-track.projectVersion=${{ github.ref_name }}
+
+      - name: Publicare artefact in Nexus
+        if: ${{ inputs.deploy-maven }}
+        env:
+          NEXUS_USER:     ${{ secrets.NEXUS_USER }}
+          NEXUS_PASSWORD: ${{ secrets.NEXUS_PASSWORD }}
+        run: mvn -B deploy -DskipTests
+
+      - name: Login la registry-ul tau
+        if: ${{ inputs.push-image }}
+        uses: docker/login-action@v3
+        with:
+          registry: docker.georgesand.ro
+          username: ${{ secrets.NEXUS_USER }}
+          password: ${{ secrets.NEXUS_PASSWORD }}
+
+      - name: Build si push imagine
+        if: ${{ inputs.push-image }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            docker.georgesand.ro/${{ inputs.image-name }}:${{ github.sha }}
+            docker.georgesand.ro/${{ inputs.image-name }}:latest
