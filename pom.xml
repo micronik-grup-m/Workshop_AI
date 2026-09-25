@@ -295,8 +295,7 @@
                         <format>HTML</format>
                         <format>JSON</format>
                     </formats>
-                    <!-- Citește cheia NVD din server "nvd" în settings.xml — nu mai trebuie -Dnvd.api.key -->
-                    <nvdApiServerId>nvd</nvdApiServerId>
+                    <!-- Cheia NVD vine din CI: mvn ... -DnvdApiKey=... (secret NVD_API_KEY) -->
                 </configuration>
                 <executions>
                     <execution>

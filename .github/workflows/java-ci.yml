@@ -12,6 +12,7 @@ on:
       NEXUS_PASSWORD: { required: true }
       SONAR_TOKEN:    { required: true }
       DTRACK_APIKEY:  { required: true }
+      NVD_API_KEY:    { required: true }
 
 jobs:
   build:
@@ -31,7 +32,9 @@ jobs:
           server-password: NEXUS_PASSWORD
 
       - name: Build si teste
-        run: mvn -B clean verify
+        env:
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        run: mvn -B clean verify -DnvdApiKey="$NVD_API_KEY"
 
       - name: Analiza SonarQube
         env:
