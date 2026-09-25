@@ -106,7 +106,7 @@ jobs:
         run: |
           mvn -B cyclonedx:makeAggregateBom
           mvn -B io.github.pmckeown:dependency-track-maven-plugin:upload-bom \
-            -Ddependency-track.serverUrl=https://dtrack.georgesand.ro \
+            -Ddependency-track.dependencyTrackBaseUrl=https://dtrack.georgesand.ro \
             -Ddependency-track.apiKey="$DTRACK_APIKEY" \
             -Ddependency-track.projectName=${{ github.event.repository.name }} \
             -Ddependency-track.projectVersion=${{ github.ref_name }}
