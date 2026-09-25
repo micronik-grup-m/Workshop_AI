@@ -31,6 +31,29 @@ jobs:
           server-username: NEXUS_USER
           server-password: NEXUS_PASSWORD
 
+      - name: Mirror Nexus pentru dependinte (in loc de Maven Central direct)
+        run: |
+          python3 - <<'PY'
+          import os
+
+          path = os.path.expanduser("~/.m2/settings.xml")
+          with open(path) as f:
+              content = f.read()
+
+          mirror = """  <mirrors>
+              <mirror>
+                <id>nexus</id>
+                <mirrorOf>*</mirrorOf>
+                <url>https://nexus.georgesand.ro/repository/maven-public/</url>
+              </mirror>
+            </mirrors>
+          """
+
+          content = content.replace("</settings>", mirror + "</settings>")
+          with open(path, "w") as f:
+              f.write(content)
+          PY
+
       - name: Build si teste
         env:
           NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
