@@ -10,5 +10,5 @@ jobs:
     with:
       deploy-maven: true
       push-image:   true
-      image-name:   numeaplicatie
+      image-name:   workshop-ai
     secrets: inherit        # trimite automat toate secretele, nu le enumeri
