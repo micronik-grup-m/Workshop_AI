@@ -6,7 +6,7 @@ on:
 
 jobs:
   ci:
-    uses: georgesand/Workshop_AI/.github/workflows/java-ci.yml@main
+    uses: micronik-grup-m/Workshop_AI/.github/workflows/java-ci.yml@main
     with:
       deploy-maven: true
       push-image:   true
