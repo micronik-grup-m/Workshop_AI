@@ -34,8 +34,8 @@ jobs:
           java-version: ${{ inputs.java-version }}
           cache: maven            # cache-ul Maven al GitHub-ului, nu al tau
           server-id: nexus        # genereaza ~/.m2/settings.xml cu credentialele de mai jos
-          server-username: NEXUS_USER
-          server-password: NEXUS_PASSWORD
+          server-username-env-var: NEXUS_USER
+          server-password-env-var: NEXUS_PASSWORD
 
       - name: Mirror Nexus + server NVD in settings.xml
         run: |

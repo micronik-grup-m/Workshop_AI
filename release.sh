@@ -19,8 +19,6 @@
 # Everything deploy.sh needs (SONAR_TOKEN, DTRACK_API_KEY, etc.) is still
 # required — see deploy.sh's own header for those.
 
-SONAR_TOKEN="sqa_da3430e362feb1b69a18f20e0029334007eb48ba"
-
 set -uo pipefail
 cd "$(dirname "$0")"
 
